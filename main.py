@@ -1,7 +1,6 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify
 import pandas as pd
 import pickle
-import io
 
 app = Flask(__name__)
 
@@ -30,18 +29,21 @@ def predict():
         # Load the CSV file from the provided path
         data = pd.read_csv(csv_path)
 
-        # Ensure required columns are present
-        required_columns = ['CPU_Usage(%)', 'Memory_Usage(%)', 'Latency(ms)']
-        if not all(col in data.columns for col in required_columns):
-            return jsonify({"error": f"Missing required columns: {required_columns}"}), 400
+        # Check for variations in column names
+        cpu_col = next((col for col in data.columns if 'CPU_Usage' in col), None)
+        mem_col = next((col for col in data.columns if 'Memory_Usage' in col), None)
+        lat_col = next((col for col in data.columns if 'Latency' in col), None)
+        ts_col = next((col for col in data.columns if 'Random_Timestamp' in col), None)
+
+        if not (cpu_col and mem_col and lat_col and ts_col):
+            return jsonify({"error": f"Missing required columns: {['CPU_Usage(%)', 'Memory_Usage(%)', 'Latency(ms)', 'Random_Timestamp']}"}), 400
 
         # Create interaction features
-        data['CPU_RAM_Interaction'] = data['CPU_Usage(%)'] * data['Memory_Usage(%)']
-        data['Latency_per_CPU'] = data['Latency(ms)'] / (data['CPU_Usage(%)'] + 1)
+        data['CPU_RAM_Interaction'] = data[cpu_col] * data[mem_col]
+        data['Latency_per_CPU'] = data[lat_col] / (data[cpu_col] + 1)
 
         # Prepare the input data
-        input_data = data[['CPU_Usage(%)', 'Memory_Usage(%)', 'Latency(ms)', 
-                           'CPU_RAM_Interaction', 'Latency_per_CPU']]
+        input_data = data[[cpu_col, mem_col, lat_col, 'CPU_RAM_Interaction', 'Latency_per_CPU']]
         input_scaled = scaler.transform(input_data)
 
         # Get predictions from the model
@@ -52,9 +54,8 @@ def predict():
         data['Anomaly_Score'] = anomaly_scores
         data['Anomaly_Status'] = anomaly_status
 
-        # Convert results to JSON
-        result = data[['CPU_Usage(%)', 'Memory_Usage(%)', 'Latency(ms)', 
-                       'Anomaly_Score', 'Anomaly_Status']].to_dict(orient='records')
+        # Convert results to JSON, including the original Random_Timestamp column
+        result = data[[ts_col, cpu_col, mem_col, lat_col, 'Anomaly_Score', 'Anomaly_Status']].to_dict(orient='records')
 
         return jsonify(result), 200
 
