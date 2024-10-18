@@ -33,17 +33,19 @@ def predict():
         cpu_col = next((col for col in data.columns if 'CPU_Usage' in col), None)
         mem_col = next((col for col in data.columns if 'Memory_Usage' in col), None)
         lat_col = next((col for col in data.columns if 'Latency' in col), None)
-        ts_col = next((col for col in data.columns if 'Random_Timestamp' in col), None)
+        ts_col = next((col for col in data.columns if 'Timestamp' in col), None)
+        metigat_col = next((col for col in data.columns if 'Mitigation_Suggestion' in col), None)
 
-        if not (cpu_col and mem_col and lat_col and ts_col):
-            return jsonify({"error": f"Missing required columns: {['CPU_Usage(%)', 'Memory_Usage(%)', 'Latency(ms)', 'Random_Timestamp']}"}), 400
+
+        if not (cpu_col and mem_col and lat_col and ts_col and metigat_col):
+            return jsonify({"error": f"Missing required columns: {['CPU_Usage(%)', 'Memory_Usage(%)', 'Latency(ms)', 'Random_Timestamp', 'Mitigation_Suggestion' ]}"}), 400
 
         # Create interaction features
         data['CPU_RAM_Interaction'] = data[cpu_col] * data[mem_col]
         data['Latency_per_CPU'] = data[lat_col] / (data[cpu_col] + 1)
 
         # Prepare the input data
-        input_data = data[[cpu_col, mem_col, lat_col, 'CPU_RAM_Interaction', 'Latency_per_CPU']]
+        input_data = data[[cpu_col, mem_col, lat_col,'CPU_RAM_Interaction', 'Latency_per_CPU']]
         input_scaled = scaler.transform(input_data)
 
         # Get predictions from the model
@@ -54,8 +56,11 @@ def predict():
         data['Anomaly_Score'] = anomaly_scores
         data['Anomaly_Status'] = anomaly_status
 
+        # Filter rows where Anomaly_Status is 1
+        anomaly_data = data[data['Anomaly_Status'] == 1]
+
         # Convert results to JSON, including the original Random_Timestamp column
-        result = data[[ts_col, cpu_col, mem_col, lat_col, 'Anomaly_Score', 'Anomaly_Status']].to_dict(orient='records')
+        result = anomaly_data[[ts_col, cpu_col, mem_col, lat_col, metigat_col , 'Anomaly_Score', 'Anomaly_Status']].to_dict(orient='records')
 
         return jsonify(result), 200
 
